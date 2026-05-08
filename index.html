@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔊 Soundboard | Upload & Play</title>
+    <title>🔊 Soundboard | Pre‑loaded Sounds</title>
     
     <!-- JSZip for ZIP uploads -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
@@ -389,10 +389,10 @@
     <div class="container">
         <div class="header">
             <h1>🔊 Soundboard</h1>
-            <p class="tagline">Upload, organize, and play your favorite audio clips</p>
+            <p class="tagline">Pre‑loaded sounds + your own uploads</p>
         </div>
 
-        <div class="status" id="statusBar">Ready — drop a ZIP or choose a single file</div>
+        <div class="status" id="statusBar">Loading…</div>
         <div class="progress-wrap" id="progressWrap">
             <div class="progress-fill" id="progressFill"></div>
         </div>
@@ -425,6 +425,7 @@
                 <button class="btn btn-outline" id="exportBtn">📤 Export</button>
                 <button class="btn btn-outline" id="importBtn">📥 Import</button>
                 <button class="btn btn-outline" id="clearBtn">🗑️ Clear All</button>
+                <button class="btn btn-outline" id="loadDefaultBtn">🔄 Load Default Sounds</button>
                 <button class="btn btn-danger" id="resetBtn">Reset App</button>
             </div>
             <input type="file" id="importFile" accept=".json" style="display:none;">
@@ -439,18 +440,23 @@
         <!-- Sound Grid -->
         <div class="section-header">Your Collection</div>
         <div class="sound-grid" id="memeContainer">
-            <div class="empty-state">✨ Nothing here yet. Upload something!</div>
+            <div class="empty-state">✨ Nothing here yet. Loading defaults…</div>
         </div>
 
-        <div class="footer">All sounds are stored locally on your device</div>
+        <div class="footer">All sounds stored locally · Default sounds from GitHub</div>
     </div>
 
     <script>
         (function() {
             // ----------------------------------------------
-            // IndexedDB configuration
+            // ⚠️ REPLACE THIS WITH YOUR OWN RAW ZIP URL ⚠️
             // ----------------------------------------------
-            const DB_NAME = 'SoundboardV3';
+            const DEFAULT_ZIP_URL = 'https://raw.githubusercontent.com/Sonawanemayur-IT/MemeSoundBoard/main/memesoundboard.zip';
+            
+            // ----------------------------------------------
+            // IndexedDB setup
+            // ----------------------------------------------
+            const DB_NAME = 'SoundboardV4';
             const STORE_NAME = 'sounds';
             let db = null;
             let memes = [];
@@ -470,6 +476,7 @@
             const importBtn = document.getElementById('importBtn');
             const importFile = document.getElementById('importFile');
             const clearBtn = document.getElementById('clearBtn');
+            const loadDefaultBtn = document.getElementById('loadDefaultBtn');
             const resetBtn = document.getElementById('resetBtn');
             const memeCount = document.getElementById('memeCount');
             const storageUsed = document.getElementById('storageUsed');
@@ -518,7 +525,13 @@
                     memes = req.result;
                     renderGrid();
                     updateStats();
-                    statusBar.textContent = `Loaded ${memes.length} sound${memes.length!==1?'s':''}`;
+                    // If empty, automatically load default ZIP
+                    if (memes.length === 0) {
+                        statusBar.textContent = 'No sounds found. Loading defaults…';
+                        loadDefaultSounds(true);
+                    } else {
+                        statusBar.textContent = `Loaded ${memes.length} sound${memes.length!==1?'s':''}`;
+                    }
                 };
             }
 
@@ -569,7 +582,91 @@
             }
 
             // ----------------------------------------------
-            // Add sounds
+            // Process ZIP from file or blob
+            // ----------------------------------------------
+            async function processZipBlob(zipBlob, clearFirst = false) {
+                if (clearFirst) {
+                    await clearAllSounds();
+                    memes = [];
+                }
+                showProgress(true);
+                updateProgress(0);
+                
+                try {
+                    const zip = await JSZip.loadAsync(zipBlob);
+                    const audioFiles = [];
+                    zip.forEach((path, entry) => {
+                        if (!entry.dir) {
+                            const ext = path.split('.').pop().toLowerCase();
+                            if (['mp3','wav','m4a','aac','ogg','webm','flac'].includes(ext)) {
+                                audioFiles.push({ path, name: path.split('/').pop(), entry });
+                            }
+                        }
+                    });
+
+                    if (!audioFiles.length) {
+                        statusBar.textContent = 'No audio files found in ZIP';
+                        showProgress(false);
+                        return;
+                    }
+
+                    let added = 0;
+                    for (let i = 0; i < audioFiles.length; i++) {
+                        const af = audioFiles[i];
+                        updateProgress(Math.floor((i / audioFiles.length) * 100));
+                        try {
+                            const blob = await af.entry.async('blob');
+                            const sound = {
+                                id: Date.now() + Math.random() + i,
+                                name: cleanName(af.name),
+                                emoji: randomEmoji(),
+                                blob: blob,
+                                fileName: af.name,
+                            };
+                            await saveSound(sound);
+                            added++;
+                        } catch (e) {
+                            console.warn('Skipped:', af.name);
+                        }
+                    }
+
+                    updateProgress(100);
+                    renderGrid();
+                    updateStats();
+                    statusBar.textContent = `${added} sounds imported`;
+                    setTimeout(() => showProgress(false), 1200);
+                } catch (e) {
+                    statusBar.textContent = 'Error processing ZIP';
+                    showProgress(false);
+                }
+            }
+
+            // ----------------------------------------------
+            // Load default ZIP from GitHub
+            // ----------------------------------------------
+            async function loadDefaultSounds(automatic = false) {
+                if (!automatic) {
+                    // Manual button click: clear existing first
+                    if (!confirm('Replace current sounds with the default collection?')) return;
+                }
+                statusBar.textContent = automatic ? 'Fetching default sounds from GitHub…' : 'Loading default sounds…';
+                showProgress(true);
+                updateProgress(10);
+                
+                try {
+                    const response = await fetch(DEFAULT_ZIP_URL);
+                    if (!response.ok) throw new Error('Failed to fetch ZIP');
+                    const zipBlob = await response.blob();
+                    await processZipBlob(zipBlob, true); // clear first
+                } catch (error) {
+                    statusBar.textContent = 'Could not load default sounds. Check the URL.';
+                    showProgress(false);
+                    console.error(error);
+                }
+            }
+
+            // ----------------------------------------------
+            // Add single sound / manual ZIP
             // ----------------------------------------------
             async function addSingleSound() {
                 const file = singleFile.files[0];
@@ -607,62 +704,10 @@
                 addSingleBtn.textContent = '➕ Add Sound';
             }
 
-            async function processZip(file) {
+            async function manualZipUpload(file) {
                 if (!file) return;
-                showProgress(true);
-                updateProgress(0);
-                statusBar.textContent = 'Reading ZIP...';
-
-                try {
-                    const zip = await JSZip.loadAsync(file);
-                    const audioFiles = [];
-                    zip.forEach((path, entry) => {
-                        if (!entry.dir) {
-                            const ext = path.split('.').pop().toLowerCase();
-                            if (['mp3','wav','m4a','aac','ogg','webm','flac'].includes(ext)) {
-                                audioFiles.push({ path, name: path.split('/').pop(), entry });
-                            }
-                        }
-                    });
-
-                    if (!audioFiles.length) {
-                        statusBar.textContent = 'No audio files found in ZIP';
-                        showProgress(false);
-                        return;
-                    }
-
-                    statusBar.textContent = `Processing ${audioFiles.length} files...`;
-                    updateProgress(5);
-
-                    let added = 0;
-                    for (let i = 0; i < audioFiles.length; i++) {
-                        const af = audioFiles[i];
-                        updateProgress(5 + Math.floor((i / audioFiles.length) * 90));
-                        try {
-                            const blob = await af.entry.async('blob');
-                            const sound = {
-                                id: Date.now() + Math.random() + i,
-                                name: cleanName(af.name),
-                                emoji: randomEmoji(),
-                                blob: blob,
-                                fileName: af.name,
-                            };
-                            await saveSound(sound);
-                            added++;
-                        } catch (e) {
-                            console.warn('Skipped:', af.name);
-                        }
-                    }
-
-                    updateProgress(100);
-                    renderGrid();
-                    updateStats();
-                    statusBar.textContent = `${added} sound${added!==1?'s':''} imported from ZIP`;
-                    setTimeout(() => showProgress(false), 1000);
-                } catch (e) {
-                    statusBar.textContent = 'ZIP processing error';
-                    showProgress(false);
-                }
+                statusBar.textContent = 'Processing uploaded ZIP…';
+                await processZipBlob(file, false); // merge
                 zipFile.value = '';
             }
 
@@ -714,7 +759,7 @@
             // ----------------------------------------------
             function renderGrid() {
                 if (!memes.length) {
-                    memeContainer.innerHTML = '<div class="empty-state">✨ Nothing here yet. Upload something!</div>';
+                    memeContainer.innerHTML = '<div class="empty-state">✨ Nothing here yet. Load defaults or upload.</div>';
                     return;
                 }
 
@@ -853,7 +898,7 @@
             // Event listeners
             // ----------------------------------------------
             zipFile.addEventListener('change', e => {
-                if (e.target.files[0]) processZip(e.target.files[0]);
+                if (e.target.files[0]) manualZipUpload(e.target.files[0]);
             });
 
             addSingleBtn.addEventListener('click', addSingleSound);
@@ -863,13 +908,14 @@
                 if (e.target.files[0]) importCollection(e.target.files[0]);
             });
             clearBtn.addEventListener('click', clearAll);
+            loadDefaultBtn.addEventListener('click', () => loadDefaultSounds(false));
             resetBtn.addEventListener('click', resetApp);
 
             memeName.addEventListener('keypress', e => {
                 if (e.key === 'Enter') addSingleSound();
             });
 
-            // Start
+            // Start everything
             loadAllSounds();
         })();
     </script>
