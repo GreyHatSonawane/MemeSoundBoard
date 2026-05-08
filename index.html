@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔊 Soundboard | Upload & Play</title>
+    
+    <!-- JSZip for ZIP uploads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
+    </script>
+    
+    <style>
+        :root {
+            --bg: #fafaf8;
+            --surface: #ffffff;
+            --surface2: #f4f3f0;
+            --text: #2d2a26;
+            --text-muted: #6b6560;
+            --border: #e0dcd5;
+            --accent: #5b8c5a;
+            --accent-hover: #4a7349;
+            --danger: #c1665b;
+            --danger-hover: #a55248;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-md: 0 6px 20px rgba(0,0,0,0.08);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --transition: 0.2s ease;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 32px 24px 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--text);
+            line-height: 1.5;
+            letter-spacing: -0.01em;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 28px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.4rem;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.02em;
+        }
+        .header .tagline {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Status bar */
+        .status {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 10px 22px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Progress bar */
+        .progress-wrap {
+            width: 100%;
+            max-width: 600px;
+            height: 6px;
+            background: var(--surface2);
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 10px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        /* Upload Panel */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 28px 30px;
+            box-shadow: var(--shadow-md);
+            width: 100%;
+            max-width: 640px;
+        }
+        .panel-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 22px;
+            color: var(--text);
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 22px 20px;
+            text-align: center;
+            background: var(--surface2);
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 16px;
+        }
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background: #f0f5ef;
+        }
+        .upload-zone label {
+            font-weight: 600;
+            cursor: pointer;
+            display: block;
+        }
+        .upload-zone input[type="file"] {
+            display: none;
+        }
+        .hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .divider {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin: 18px 0 16px;
+            position: relative;
+        }
+        .divider::before,
+        .divider::after {
+            content: "";
+            height: 1px;
+            width: 35%;
+            background: var(--border);
+            position: absolute;
+            top: 50%;
+        }
+        .divider::before { left: 0; }
+        .divider::after { right: 0; }
+
+        .single-upload {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .input-row input {
+            flex: 1;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            color: var(--text);
+            transition: var(--transition);
+        }
+        .input-row input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(91,140,90,0.2);
+        }
+        .emoji-input {
+            max-width: 75px !important;
+            text-align: center;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 13px 24px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 2px 8px rgba(91,140,90,0.25);
+            letter-spacing: 0.01em;
+        }
+        .btn:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 12px rgba(91,140,90,0.35);
+            transform: translateY(-1px);
+        }
+        .btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 1px 4px rgba(91,140,90,0.3);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            box-shadow: none;
+        }
+        .btn-outline:hover {
+            background: var(--surface2);
+            box-shadow: var(--shadow-sm);
+            color: var(--text);
+        }
+        .btn-danger {
+            background: var(--danger);
+            box-shadow: 0 2px 8px rgba(193,102,91,0.3);
+        }
+        .btn-danger:hover {
+            background: var(--danger-hover);
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 20px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: var(--surface2);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        /* Grid */
+        .section-header {
+            font-size: 1.3rem;
+            font-weight: 700;
+            text-align: center;
+            margin-top: 8px;
+            width: 100%;
+        }
+
+        .sound-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1050px;
+        }
+
+        .sound-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 12px 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .sound-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
+        }
+        .sound-card:active {
+            transform: translateY(1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+        }
+        .sound-card.playing {
+            border-color: var(--accent);
+            background: #f4f8f2;
+            box-shadow: 0 0 0 3px rgba(91,140,90,0.3);
+        }
+        .sound-card .emoji {
+            font-size: 2.4rem;
+            margin-bottom: 10px;
+        }
+        .sound-card .name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-align: center;
+            color: var(--text);
+            word-break: break-word;
+            line-height: 1.3;
+        }
+        .sound-card .file-name {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+        .sound-card .play-icon {
+            font-size: 1.5rem;
+            margin-top: 12px;
+            opacity: 0.5;
+            transition: var(--transition);
+        }
+        .sound-card:hover .play-icon {
+            opacity: 0.8;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(193,102,91,0.12);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+        .delete-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: var(--text-muted);
+            padding: 48px 20px;
+            font-size: 1rem;
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            background: var(--surface2);
+        }
+
+        .footer {
+            margin-top: 32px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.8rem; }
+            .panel { padding: 22px 16px; }
+            .input-row { flex-direction: column; }
+            .emoji-input { max-width: 100% !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔊 Soundboard</h1>
+            <p class="tagline">Upload, organize, and play your favorite audio clips</p>
+        </div>
+
+        <div class="status" id="statusBar">Ready — drop a ZIP or choose a single file</div>
+        <div class="progress-wrap" id="progressWrap">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <!-- Upload Panel -->
+        <div class="panel">
+            <div class="panel-title">Add Sounds</div>
+            
+            <!-- ZIP Upload -->
+            <div class="upload-zone" id="zipZone">
+                <label for="zipFile">📁 Upload a ZIP folder</label>
+                <input type="file" id="zipFile" accept=".zip">
+                <div class="hint">Pack multiple MP3/WAV files into a ZIP archive</div>
+            </div>
+
+            <div class="divider">or single file</div>
+
+            <!-- Single file upload -->
+            <div class="single-upload">
+                <input type="file" id="singleFile" accept="audio/*,.mp3,.wav,.m4a">
+                <div class="input-row">
+                    <input type="text" id="memeName" placeholder="Custom name (optional)" maxlength="30">
+                    <input type="text" id="memeEmoji" class="emoji-input" maxlength="4" value="🔊">
+                </div>
+                <button class="btn" id="addSingleBtn">➕ Add Sound</button>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="actions">
+                <button class="btn btn-outline" id="exportBtn">📤 Export</button>
+                <button class="btn btn-outline" id="importBtn">📥 Import</button>
+                <button class="btn btn-outline" id="clearBtn">🗑️ Clear All</button>
+                <button class="btn btn-danger" id="resetBtn">Reset App</button>
+            </div>
+            <input type="file" id="importFile" accept=".json" style="display:none;">
+
+            <!-- Storage stats -->
+            <div class="stats">
+                <span id="memeCount">0 sounds</span>
+                <span id="storageUsed">0 MB used</span>
+            </div>
+        </div>
+
+        <!-- Sound Grid -->
+        <div class="section-header">Your Collection</div>
+        <div class="sound-grid" id="memeContainer">
+            <div class="empty-state">✨ Nothing here yet. Upload something!</div>
+        </div>
+
+        <div class="footer">All sounds are stored locally on your device</div>
+    </div>
+
+    <script>
+        (function() {
+            // ----------------------------------------------
+            // IndexedDB configuration
+            // ----------------------------------------------
+            const DB_NAME = 'SoundboardV3';
+            const STORE_NAME = 'sounds';
+            let db = null;
+            let memes = [];
+            let currentAudio = null;
+
+            const EMOJI_SET = ['🎵','🎧','🔊','🎤','💥','🎯','🔥','✨','🎶','🤘','👾','🦾','💎','🌟','🍿','🎬','🎮','🎸'];
+
+            const statusBar = document.getElementById('statusBar');
+            const progressWrap = document.getElementById('progressWrap');
+            const progressFill = document.getElementById('progressFill');
+            const zipFile = document.getElementById('zipFile');
+            const singleFile = document.getElementById('singleFile');
+            const memeName = document.getElementById('memeName');
+            const memeEmoji = document.getElementById('memeEmoji');
+            const addSingleBtn = document.getElementById('addSingleBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const importBtn = document.getElementById('importBtn');
+            const importFile = document.getElementById('importFile');
+            const clearBtn = document.getElementById('clearBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            const memeCount = document.getElementById('memeCount');
+            const storageUsed = document.getElementById('storageUsed');
+            const memeContainer = document.getElementById('memeContainer');
+
+            function randomEmoji() {
+                return EMOJI_SET[Math.floor(Math.random() * EMOJI_SET.length)];
+            }
+
+            function cleanName(filename) {
+                let name = filename.replace(/\.[^/.]+$/, "");
+                name = name.replace(/[-_]/g, ' ').trim();
+                if (!name) return 'Unnamed';
+                return name.substring(0, 30);
+            }
+
+            function showProgress(visible) {
+                progressWrap.style.display = visible ? 'block' : 'none';
+            }
+            function updateProgress(percent) {
+                progressFill.style.width = percent + '%';
+            }
+
+            // ----------------------------------------------
+            // IndexedDB helpers
+            // ----------------------------------------------
+            function openDB() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(DB_NAME, 1);
+                    req.onupgradeneeded = (e) => {
+                        const d = e.target.result;
+                        if (!d.objectStoreNames.contains(STORE_NAME)) {
+                            d.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                        }
+                    };
+                    req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+                    req.onerror = (e) => reject(e.target.error);
+                });
+            }
+
+            async function loadAllSounds() {
+                await openDB();
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const req = tx.objectStore(STORE_NAME).getAll();
+                req.onsuccess = () => {
+                    memes = req.result;
+                    renderGrid();
+                    updateStats();
+                    statusBar.textContent = `Loaded ${memes.length} sound${memes.length!==1?'s':''}`;
+                };
+            }
+
+            function saveSound(soundObj) {
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    tx.objectStore(STORE_NAME).add(soundObj);
+                    tx.oncomplete = () => {
+                        memes.push(soundObj);
+                        resolve();
+                    };
+                    tx.onerror = () => reject(tx.error);
+                });
+            }
+
+            function deleteSound(id) {
+                return new Promise((resolve) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    tx.objectStore(STORE_NAME).delete(id);
+                    tx.oncomplete = () => resolve();
+                });
+            }
+
+            function clearAllSounds() {
+                return new Promise((resolve) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    tx.objectStore(STORE_NAME).clear();
+                    tx.oncomplete = () => resolve();
+                });
+            }
+
+            async function getStorageSize() {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const req = tx.objectStore(STORE_NAME).getAll();
+                return new Promise((resolve) => {
+                    req.onsuccess = () => {
+                        let total = 0;
+                        req.result.forEach(s => { if (s.blob) total += s.blob.size; });
+                        resolve(total);
+                    };
+                });
+            }
+
+            async function updateStats() {
+                memeCount.textContent = `${memes.length} sound${memes.length !== 1 ? 's' : ''}`;
+                const bytes = await getStorageSize();
+                storageUsed.textContent = `${(bytes / 1024 / 1024).toFixed(1)} MB used`;
+            }
+
+            // ----------------------------------------------
+            // Add sounds
+            // ----------------------------------------------
+            async function addSingleSound() {
+                const file = singleFile.files[0];
+                if (!file) {
+                    statusBar.textContent = 'Select an audio file first';
+                    return;
+                }
+                let name = memeName.value.trim() || cleanName(file.name);
+                let emoji = memeEmoji.value.trim() || randomEmoji();
+
+                addSingleBtn.disabled = true;
+                addSingleBtn.textContent = 'Processing...';
+                statusBar.textContent = `Adding ${file.name}...`;
+
+                const sound = {
+                    id: Date.now() + Math.random(),
+                    name: name,
+                    emoji: emoji,
+                    blob: file,
+                    fileName: file.name,
+                };
+
+                try {
+                    await saveSound(sound);
+                    renderGrid();
+                    updateStats();
+                    statusBar.textContent = `"${name}" added`;
+                    singleFile.value = '';
+                    memeName.value = '';
+                    memeEmoji.value = '🔊';
+                } catch (e) {
+                    statusBar.textContent = 'Failed to save sound';
+                }
+                addSingleBtn.disabled = false;
+                addSingleBtn.textContent = '➕ Add Sound';
+            }
+
+            async function processZip(file) {
+                if (!file) return;
+                showProgress(true);
+                updateProgress(0);
+                statusBar.textContent = 'Reading ZIP...';
+
+                try {
+                    const zip = await JSZip.loadAsync(file);
+                    const audioFiles = [];
+                    zip.forEach((path, entry) => {
+                        if (!entry.dir) {
+                            const ext = path.split('.').pop().toLowerCase();
+                            if (['mp3','wav','m4a','aac','ogg','webm','flac'].includes(ext)) {
+                                audioFiles.push({ path, name: path.split('/').pop(), entry });
+                            }
+                        }
+                    });
+
+                    if (!audioFiles.length) {
+                        statusBar.textContent = 'No audio files found in ZIP';
+                        showProgress(false);
+                        return;
+                    }
+
+                    statusBar.textContent = `Processing ${audioFiles.length} files...`;
+                    updateProgress(5);
+
+                    let added = 0;
+                    for (let i = 0; i < audioFiles.length; i++) {
+                        const af = audioFiles[i];
+                        updateProgress(5 + Math.floor((i / audioFiles.length) * 90));
+                        try {
+                            const blob = await af.entry.async('blob');
+                            const sound = {
+                                id: Date.now() + Math.random() + i,
+                                name: cleanName(af.name),
+                                emoji: randomEmoji(),
+                                blob: blob,
+                                fileName: af.name,
+                            };
+                            await saveSound(sound);
+                            added++;
+                        } catch (e) {
+                            console.warn('Skipped:', af.name);
+                        }
+                    }
+
+                    updateProgress(100);
+                    renderGrid();
+                    updateStats();
+                    statusBar.textContent = `${added} sound${added!==1?'s':''} imported from ZIP`;
+                    setTimeout(() => showProgress(false), 1000);
+                } catch (e) {
+                    statusBar.textContent = 'ZIP processing error';
+                    showProgress(false);
+                }
+                zipFile.value = '';
+            }
+
+            // ----------------------------------------------
+            // Playback
+            // ----------------------------------------------
+            function playSound(sound, cardElement) {
+                if (currentAudio) {
+                    currentAudio.pause();
+                    URL.revokeObjectURL(currentAudio.src);
+                    currentAudio = null;
+                }
+                document.querySelectorAll('.sound-card').forEach(c => c.classList.remove('playing'));
+
+                if (!sound.blob) {
+                    statusBar.textContent = 'No audio data';
+                    return;
+                }
+
+                const url = URL.createObjectURL(sound.blob);
+                const audio = new Audio(url);
+                audio.volume = 1.0;
+                currentAudio = audio;
+
+                audio.addEventListener('playing', () => {
+                    statusBar.textContent = `Playing: ${sound.name}`;
+                    if (cardElement) cardElement.classList.add('playing');
+                });
+                audio.addEventListener('ended', () => {
+                    statusBar.textContent = 'Ready';
+                    if (cardElement) cardElement.classList.remove('playing');
+                    URL.revokeObjectURL(url);
+                    currentAudio = null;
+                });
+                audio.addEventListener('error', () => {
+                    statusBar.textContent = 'Playback failed';
+                    if (cardElement) cardElement.classList.remove('playing');
+                    URL.revokeObjectURL(url);
+                });
+
+                audio.play().catch(err => {
+                    statusBar.textContent = 'Click again to play';
+                    if (cardElement) cardElement.classList.remove('playing');
+                });
+            }
+
+            // ----------------------------------------------
+            // Render grid
+            // ----------------------------------------------
+            function renderGrid() {
+                if (!memes.length) {
+                    memeContainer.innerHTML = '<div class="empty-state">✨ Nothing here yet. Upload something!</div>';
+                    return;
+                }
+
+                let html = '';
+                memes.forEach(s => {
+                    html += `
+                        <div class="sound-card" data-id="${s.id}">
+                            <button class="delete-btn" onclick="event.stopPropagation(); window._deleteSound(${s.id})">✕</button>
+                            <div class="emoji">${s.emoji}</div>
+                            <div class="name">${s.name}</div>
+                            <div class="file-name" title="${s.fileName || ''}">${(s.fileName || '').substring(0, 20)}</div>
+                            <div class="play-icon">▶️</div>
+                        </div>`;
+                });
+                memeContainer.innerHTML = html;
+
+                document.querySelectorAll('.sound-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const id = +card.dataset.id;
+                        const sound = memes.find(m => m.id === id);
+                        if (sound) playSound(sound, card);
+                    });
+                });
+            }
+
+            window._deleteSound = async function(id) {
+                if (!confirm('Delete this sound?')) return;
+                await deleteSound(id);
+                memes = memes.filter(m => m.id !== id);
+                renderGrid();
+                updateStats();
+                if (currentAudio) {
+                    currentAudio.pause();
+                    URL.revokeObjectURL(currentAudio.src);
+                    currentAudio = null;
+                }
+                statusBar.textContent = 'Sound deleted';
+            };
+
+            // ----------------------------------------------
+            // Export / Import
+            // ----------------------------------------------
+            async function exportCollection() {
+                if (!memes.length) {
+                    statusBar.textContent = 'Nothing to export';
+                    return;
+                }
+                const sounds = [];
+                for (const s of memes) {
+                    const base64 = await new Promise(resolve => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(s.blob);
+                    });
+                    sounds.push({ id: s.id, name: s.name, emoji: s.emoji, data: base64, fileName: s.fileName });
+                }
+                const json = JSON.stringify({ version: 2, exported: new Date().toISOString(), sounds });
+                const blob = new Blob([json], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `sounds-${Date.now()}.json`;
+                a.click();
+                statusBar.textContent = 'Exported successfully';
+            }
+
+            async function importCollection(file) {
+                if (!file) return;
+                statusBar.textContent = 'Importing...';
+                showProgress(true);
+                updateProgress(0);
+                try {
+                    const text = await file.text();
+                    const data = JSON.parse(text);
+                    if (!data.sounds) throw new Error('Invalid format');
+
+                    if (confirm(`Found ${data.sounds.length} sounds. Merge with existing?`)) {
+                        // merge
+                    } else {
+                        await clearAllSounds();
+                        memes = [];
+                    }
+
+                    for (let i = 0; i < data.sounds.length; i++) {
+                        const s = data.sounds[i];
+                        updateProgress(Math.floor((i / data.sounds.length) * 100));
+                        const resp = await fetch(s.data);
+                        const blob = await resp.blob();
+                        await saveSound({
+                            id: Date.now() + Math.random() + i,
+                            name: s.name,
+                            emoji: s.emoji,
+                            blob: blob,
+                            fileName: s.fileName || 'imported'
+                        });
+                    }
+
+                    updateProgress(100);
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const req = tx.objectStore(STORE_NAME).getAll();
+                    req.onsuccess = () => {
+                        memes = req.result;
+                        renderGrid();
+                        updateStats();
+                        statusBar.textContent = 'Import complete';
+                        showProgress(false);
+                    };
+                } catch (e) {
+                    statusBar.textContent = 'Invalid file';
+                    showProgress(false);
+                }
+                importFile.value = '';
+            }
+
+            async function clearAll() {
+                if (!confirm('Delete ALL sounds? This cannot be undone.')) return;
+                await clearAllSounds();
+                memes = [];
+                renderGrid();
+                updateStats();
+                if (currentAudio) {
+                    currentAudio.pause();
+                    URL.revokeObjectURL(currentAudio.src);
+                    currentAudio = null;
+                }
+                statusBar.textContent = 'All sounds cleared';
+            }
+
+            function resetApp() {
+                if (!confirm('Reset the app? All data will be lost.')) return;
+                indexedDB.deleteDatabase(DB_NAME).onsuccess = () => {
+                    window.location.reload();
+                };
+            }
+
+            // ----------------------------------------------
+            // Event listeners
+            // ----------------------------------------------
+            zipFile.addEventListener('change', e => {
+                if (e.target.files[0]) processZip(e.target.files[0]);
+            });
+
+            addSingleBtn.addEventListener('click', addSingleSound);
+            exportBtn.addEventListener('click', exportCollection);
+            importBtn.addEventListener('click', () => importFile.click());
+            importFile.addEventListener('change', e => {
+                if (e.target.files[0]) importCollection(e.target.files[0]);
+            });
+            clearBtn.addEventListener('click', clearAll);
+            resetBtn.addEventListener('click', resetApp);
+
+            memeName.addEventListener('keypress', e => {
+                if (e.key === 'Enter') addSingleSound();
+            });
+
+            // Start
+            loadAllSounds();
+        })();
+    </script>
+</body>
+</html>
